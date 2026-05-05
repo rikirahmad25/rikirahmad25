@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram Sales Bot API
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/telegram_sales_bot
+EnvironmentFile=/opt/telegram_sales_bot/.env
+ExecStart=/opt/telegram_sales_bot/.venv/bin/python -m app.run_api
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

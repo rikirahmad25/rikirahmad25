@@ -1,0 +1,31 @@
+OWNER = 'owner'
+MANAGE_PRODUCTS = 'manage_products'
+MANAGE_ORDERS = 'manage_orders'
+MANAGE_TICKETS = 'manage_tickets'
+MANAGE_PAYMENTS = 'manage_payments'
+MANAGE_BROADCASTS = 'manage_broadcasts'
+MANAGE_SETTINGS = 'manage_settings'
+MANAGE_ADMINS = 'manage_admins'
+VIEW_REPORTS = 'view_reports'
+MANAGE_LOTTERIES = 'manage_lotteries'
+
+ALL_PERMISSIONS = [
+    OWNER,
+    MANAGE_PRODUCTS,
+    MANAGE_ORDERS,
+    MANAGE_TICKETS,
+    MANAGE_PAYMENTS,
+    MANAGE_BROADCASTS,
+    MANAGE_SETTINGS,
+    MANAGE_ADMINS,
+    VIEW_REPORTS,
+    MANAGE_LOTTERIES,
+]
+
+ROLE_TEMPLATES = {
+    'owner': ALL_PERMISSIONS,
+    'sales_manager': [MANAGE_PRODUCTS, MANAGE_ORDERS, MANAGE_PAYMENTS, VIEW_REPORTS],
+    'support': [MANAGE_ORDERS, VIEW_REPORTS],
+    'accountant': [MANAGE_PAYMENTS, VIEW_REPORTS],
+    'marketing': [MANAGE_BROADCASTS, MANAGE_LOTTERIES, VIEW_REPORTS],
+}
