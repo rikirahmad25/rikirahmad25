@@ -81,8 +81,12 @@ DEFAULT_SETTINGS: dict[str, dict[str, Any]] = {
     },
     'product_categories': {
         'next_id': 2,
+        # نمایش لیست خود دسته‌بندی‌ها در منوی کاربر: 'single' (تک‌ستونه) یا 'double' (دوستونه)
+        'categories_layout': 'single',
+        # نمایش محصولات داخل بخش «بدون دسته» (uncategorized)
+        'uncategorized_layout': 'single',
         'items': [
-            {'id': 'cat_1', 'title': 'عمومی', 'is_active': True},
+            {'id': 'cat_1', 'title': 'عمومی', 'is_active': True, 'layout': 'single'},
         ],
     },
     'payments': {

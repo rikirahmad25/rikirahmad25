@@ -22,6 +22,32 @@ PRICE_CURRENCY_TOMAN = 'toman'
 PRICE_CURRENCY_USD = 'usd'
 PRICE_CURRENCIES = {PRICE_CURRENCY_TOMAN, PRICE_CURRENCY_USD}
 
+# گزینه‌های نمایش (تک‌ستونه/دوستونه) برای دسته‌بندی‌ها و محصولات داخل دسته‌بندی.
+LAYOUT_SINGLE = 'single'
+LAYOUT_DOUBLE = 'double'
+LAYOUTS = {LAYOUT_SINGLE, LAYOUT_DOUBLE}
+
+
+def normalize_layout(value: Any, default: str = LAYOUT_SINGLE) -> str:
+    """Return a valid layout string ('single' or 'double')."""
+    text = str(value or '').strip().lower()
+    if text in LAYOUTS:
+        return text
+    if default in LAYOUTS:
+        return default
+    return LAYOUT_SINGLE
+
+
+def category_layout(category: dict | None, default: str = LAYOUT_SINGLE) -> str:
+    """Layout to use for products inside a single category."""
+    if not isinstance(category, dict):
+        return normalize_layout(None, default)
+    return normalize_layout(category.get('layout'), default)
+
+
+def layout_columns(layout: str) -> int:
+    return 2 if normalize_layout(layout) == LAYOUT_DOUBLE else 1
+
 
 def _extra(product: Product) -> dict[str, Any]:
     return dict(getattr(product, 'extra_settings', None) or {})
@@ -159,7 +185,12 @@ class ProductService:
     async def create_category(self, title: str) -> dict[str, Any]:
         cfg = await self.settings.get('product_categories')
         next_id = int(cfg.get('next_id') or 1)
-        item = {'id': f'cat_{next_id}', 'title': title.strip() or f'دسته {next_id}', 'is_active': True}
+        item = {
+            'id': f'cat_{next_id}',
+            'title': title.strip() or f'دسته {next_id}',
+            'is_active': True,
+            'layout': LAYOUT_SINGLE,
+        }
         cfg['next_id'] = next_id + 1
         cfg['items'] = list(cfg.get('items') or []) + [item]
         await self.settings.set('product_categories', cfg)
@@ -171,7 +202,15 @@ class ProductService:
                 return item
         return None
 
-    async def update_category(self, category_id: str, *, title: str | None = None, toggle: bool = False, delete: bool = False) -> dict[str, Any] | None:
+    async def update_category(
+        self,
+        category_id: str,
+        *,
+        title: str | None = None,
+        toggle: bool = False,
+        delete: bool = False,
+        layout: str | None = None,
+    ) -> dict[str, Any] | None:
         cfg = await self.settings.get('product_categories')
         items = list(cfg.get('items') or [])
         updated = None
@@ -184,11 +223,33 @@ class ProductService:
                 if delete:
                     item['is_active'] = False
                     item['deleted'] = True
+                if layout is not None:
+                    item['layout'] = normalize_layout(layout)
                 updated = item
                 break
         cfg['items'] = items
         await self.settings.set('product_categories', cfg)
         return updated
+
+    async def get_categories_layout(self) -> str:
+        cfg = await self.settings.get('product_categories')
+        return normalize_layout(cfg.get('categories_layout'))
+
+    async def set_categories_layout(self, layout: str) -> str:
+        cfg = await self.settings.get('product_categories')
+        cfg['categories_layout'] = normalize_layout(layout)
+        await self.settings.set('product_categories', cfg)
+        return cfg['categories_layout']
+
+    async def get_uncategorized_layout(self) -> str:
+        cfg = await self.settings.get('product_categories')
+        return normalize_layout(cfg.get('uncategorized_layout'))
+
+    async def set_uncategorized_layout(self, layout: str) -> str:
+        cfg = await self.settings.get('product_categories')
+        cfg['uncategorized_layout'] = normalize_layout(layout)
+        await self.settings.set('product_categories', cfg)
+        return cfg['uncategorized_layout']
 
     async def category_counts(self, customer_visible: bool = False) -> dict[str, int]:
         result = await self.session.execute(select(Product).order_by(Product.id.desc()))

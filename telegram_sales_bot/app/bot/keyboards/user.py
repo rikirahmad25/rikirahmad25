@@ -43,27 +43,62 @@ def phone_request_keyboard(labels: dict | None = None) -> ReplyKeyboardMarkup:
     )
 
 
-def product_categories_keyboard(categories: list[dict], counts: dict[str, int] | None = None) -> InlineKeyboardMarkup:
+def _columns_for_layout(layout: str | None) -> int:
+    return 2 if str(layout or '').strip().lower() == 'double' else 1
+
+
+def product_categories_keyboard(
+    categories: list[dict],
+    counts: dict[str, int] | None = None,
+    layout: str | None = None,
+) -> InlineKeyboardMarkup:
     counts = counts or {}
     builder = InlineKeyboardBuilder()
+    category_buttons = 0
     for cat in categories:
         if not cat.get('is_active', True):
             continue
         cat_id = str(cat.get('id'))
         title = str(cat.get('title') or cat_id)
         builder.button(text=f'📁 {title}', callback_data=f'catalog:cat:{cat_id}')
+        category_buttons += 1
     if counts.get('uncategorized', 0):
         builder.button(text='📁 بدون دسته', callback_data='catalog:cat:uncategorized')
-    builder.adjust(1)
+        category_buttons += 1
+    columns = _columns_for_layout(layout)
+    if columns == 2 and category_buttons:
+        # ردیف‌های دوستونه برای دکمه‌های دسته‌بندی؛ اگر تعداد فرد بود، آخری تک‌ستونه می‌ماند.
+        rows: list[int] = []
+        remaining = category_buttons
+        while remaining >= 2:
+            rows.append(2)
+            remaining -= 2
+        if remaining:
+            rows.append(1)
+        builder.adjust(*rows)
+    else:
+        builder.adjust(1)
     return builder.as_markup()
 
 
-def products_keyboard(products: list) -> InlineKeyboardMarkup:
+def products_keyboard(products: list, layout: str | None = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for product in products:
         builder.button(text=str(product.title), callback_data=f'product:{product.id}')
     builder.button(text='⬅️ دسته‌بندی‌ها', callback_data='catalog:categories')
-    builder.adjust(1)
+    columns = _columns_for_layout(layout)
+    if columns == 2 and products:
+        rows: list[int] = []
+        remaining = len(products)
+        while remaining >= 2:
+            rows.append(2)
+            remaining -= 2
+        if remaining:
+            rows.append(1)
+        rows.append(1)  # دکمه برگشت همیشه تنها در یک ردیف نمایش داده شود.
+        builder.adjust(*rows)
+    else:
+        builder.adjust(1)
     return builder.as_markup()
 
 

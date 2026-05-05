@@ -17,6 +17,7 @@ from app.bot.keyboards.admin import (
     delivery_items_manage_keyboard,
     category_choice_keyboard,
     delivery_kind_keyboard,
+    layout_choice_keyboard,
     multi_variant_next_keyboard,
     price_currency_keyboard,
     product_categories_keyboard,
@@ -34,7 +35,19 @@ from app.bot.states.admin import AdminProductStates
 from app.core.permissions import MANAGE_PRODUCTS
 from app.db.session import SessionLocal
 from app.services.admin_service import AdminService
-from app.services.product_service import AUTO_DELIVERY_KINDS, ProductService, allow_quantity_purchase, auto_text_delivery_mode, auto_text_delivery_mode_title, is_variant_parent, product_price_display, show_stock_to_customer, variant_parent_id
+from app.services.product_service import (
+    AUTO_DELIVERY_KINDS,
+    ProductService,
+    allow_quantity_purchase,
+    auto_text_delivery_mode,
+    auto_text_delivery_mode_title,
+    category_layout,
+    is_variant_parent,
+    normalize_layout,
+    product_price_display,
+    show_stock_to_customer,
+    variant_parent_id,
+)
 from app.utils.text import money
 
 router = Router(name='admin_products')
@@ -188,8 +201,18 @@ async def product_categories(callback: CallbackQuery) -> None:
         await callback.message.answer('دسترسی نداری.')
         return
     async with SessionLocal() as session:
-        categories = await ProductService(session).list_categories(include_inactive=True)
-    await callback.message.answer('🗂 مدیریت دسته‌بندی محصولات:', reply_markup=product_categories_manage_keyboard(categories))
+        service = ProductService(session)
+        categories = await service.list_categories(include_inactive=True)
+        cats_layout = await service.get_categories_layout()
+        uncat_layout = await service.get_uncategorized_layout()
+    await callback.message.answer(
+        '🗂 مدیریت دسته‌بندی محصولات:',
+        reply_markup=product_categories_manage_keyboard(
+            categories,
+            categories_layout=cats_layout,
+            uncategorized_layout=uncat_layout,
+        ),
+    )
 
 
 @router.callback_query(F.data == 'admin:product:category:add')
@@ -213,9 +236,136 @@ async def manage_category(callback: CallbackQuery) -> None:
     if not category:
         await callback.message.answer('دسته‌بندی پیدا نشد.')
         return
+    layout = category_layout(category)
+    layout_text = 'دو ستونه' if layout == 'double' else 'تک ستونه'
     await callback.message.answer(
-        f'📁 دسته‌بندی: {category.get("title")}\nوضعیت: {"فعال" if category.get("is_active", True) else "غیرفعال"}',
-        reply_markup=product_category_manage_keyboard(category_id, bool(category.get('is_active', True))),
+        (
+            f'📁 دسته‌بندی: {category.get("title")}\n'
+            f'وضعیت: {"فعال" if category.get("is_active", True) else "غیرفعال"}\n'
+            f'نمایش محصولات این دسته: {layout_text}'
+        ),
+        reply_markup=product_category_manage_keyboard(
+            category_id,
+            bool(category.get('is_active', True)),
+            layout=layout,
+        ),
+    )
+
+
+@router.callback_query(F.data == 'admin:product:categories_layout')
+async def categories_layout_prompt(callback: CallbackQuery) -> None:
+    await callback.answer()
+    if not await _has_access(callback.from_user.id):
+        await callback.message.answer('دسترسی نداری.')
+        return
+    async with SessionLocal() as session:
+        current = await ProductService(session).get_categories_layout()
+    await callback.message.answer(
+        'نمایش لیست خودِ دسته‌بندی‌ها در منوی کاربر را انتخاب کن:',
+        reply_markup=layout_choice_keyboard('admin:product:categories_layout:set', current=current),
+    )
+
+
+@router.callback_query(F.data.startswith('admin:product:categories_layout:set:'))
+async def categories_layout_set(callback: CallbackQuery) -> None:
+    await callback.answer()
+    if not await _has_access(callback.from_user.id):
+        await callback.message.answer('دسترسی نداری.')
+        return
+    value = normalize_layout(callback.data.split(':')[-1])
+    async with SessionLocal() as session:
+        await ProductService(session).set_categories_layout(value)
+        await AdminService(session).log(
+            callback.from_user.id,
+            'set_categories_layout',
+            'product_categories',
+            value,
+        )
+    label = 'دو ستونه' if value == 'double' else 'تک ستونه'
+    await callback.message.answer(f'نمایش لیست دسته‌بندی‌ها: {label} ✅')
+
+
+@router.callback_query(F.data == 'admin:product:category:uncategorized_layout')
+async def uncategorized_layout_prompt(callback: CallbackQuery) -> None:
+    await callback.answer()
+    if not await _has_access(callback.from_user.id):
+        await callback.message.answer('دسترسی نداری.')
+        return
+    async with SessionLocal() as session:
+        current = await ProductService(session).get_uncategorized_layout()
+    await callback.message.answer(
+        'نمایش محصولات داخل بخش «بدون دسته» را انتخاب کن:',
+        reply_markup=layout_choice_keyboard('admin:product:category:uncategorized_layout:set', current=current),
+    )
+
+
+@router.callback_query(F.data.startswith('admin:product:category:uncategorized_layout:set:'))
+async def uncategorized_layout_set(callback: CallbackQuery) -> None:
+    await callback.answer()
+    if not await _has_access(callback.from_user.id):
+        await callback.message.answer('دسترسی نداری.')
+        return
+    value = normalize_layout(callback.data.split(':')[-1])
+    async with SessionLocal() as session:
+        await ProductService(session).set_uncategorized_layout(value)
+        await AdminService(session).log(
+            callback.from_user.id,
+            'set_uncategorized_layout',
+            'product_categories',
+            value,
+        )
+    label = 'دو ستونه' if value == 'double' else 'تک ستونه'
+    await callback.message.answer(f'نمایش محصولات بدون دسته: {label} ✅')
+
+
+@router.callback_query(F.data.startswith('admin:product:category:layout:set:'))
+async def category_layout_set(callback: CallbackQuery) -> None:
+    await callback.answer()
+    if not await _has_access(callback.from_user.id):
+        await callback.message.answer('دسترسی نداری.')
+        return
+    parts = callback.data.split(':')
+    # admin:product:category:layout:set:<cat_id>:<value>
+    if len(parts) < 7:
+        return
+    category_id = parts[-2]
+    value = normalize_layout(parts[-1])
+    async with SessionLocal() as session:
+        await ProductService(session).update_category(category_id, layout=value)
+        await AdminService(session).log(
+            callback.from_user.id,
+            'set_category_layout',
+            'product_category',
+            f'{category_id}:{value}',
+        )
+    label = 'دو ستونه' if value == 'double' else 'تک ستونه'
+    await callback.message.answer(f'نمایش محصولات این دسته: {label} ✅')
+
+
+@router.callback_query(F.data.startswith('admin:product:category:layout:'))
+async def category_layout_prompt(callback: CallbackQuery) -> None:
+    # هندلر «set» قبلاً ثبت شده، بنابراین callbackهایی که با :set: ادامه دارند
+    # هرگز به اینجا نمی‌رسند و نیاز به فیلتر اضافه نیست.
+    await callback.answer()
+    if not await _has_access(callback.from_user.id):
+        await callback.message.answer('دسترسی نداری.')
+        return
+    parts = callback.data.split(':')
+    # admin:product:category:layout:<cat_id>  → ۵ بخش
+    if len(parts) != 5:
+        return
+    category_id = parts[-1]
+    async with SessionLocal() as session:
+        category = await ProductService(session).get_category(category_id)
+    if not category:
+        await callback.message.answer('دسته‌بندی پیدا نشد.')
+        return
+    await callback.message.answer(
+        f'نمایش محصولات داخل دسته‌بندی «{category.get("title")}» را انتخاب کن:',
+        reply_markup=layout_choice_keyboard(
+            f'admin:product:category:layout:set:{category_id}',
+            current=category_layout(category),
+        ),
     )
 
 

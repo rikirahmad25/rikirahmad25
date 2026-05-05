@@ -8,7 +8,15 @@ from app.bot.filters import MenuTextFilter
 from app.bot.keyboards.user import product_categories_keyboard, product_keyboard, product_variants_keyboard, products_keyboard
 from app.db.models import Order
 from app.db.session import SessionLocal
-from app.services.product_service import ProductService, allow_quantity_purchase, is_variant_parent, product_price_display, show_stock_to_customer, variant_parent_id
+from app.services.product_service import (
+    ProductService,
+    allow_quantity_purchase,
+    category_layout,
+    is_variant_parent,
+    product_price_display,
+    show_stock_to_customer,
+    variant_parent_id,
+)
 from app.services.settings_service import SettingsService
 from app.services.user_service import UserService
 from app.utils.text import money
@@ -24,6 +32,8 @@ async def _show_categories(message_or_callback) -> None:
         products = await service.list_active()
         categories = await service.list_categories()
         counts = await service.category_counts(customer_visible=True)
+        cats_layout = await service.get_categories_layout()
+        uncat_layout = await service.get_uncategorized_layout()
     if not products:
         await message_or_callback.answer(texts.get('no_products', 'فعلاً محصول فعالی نداریم.'))
         return
@@ -31,9 +41,15 @@ async def _show_categories(message_or_callback) -> None:
     # catalog page (category list), instead of keeping them inside the last
     # category. If no category exists at all, show products directly.
     if not categories and not counts.get('uncategorized'):
-        await message_or_callback.answer(texts.get('products_title', 'محصولات فعال:'), reply_markup=products_keyboard(products))
+        await message_or_callback.answer(
+            texts.get('products_title', 'محصولات فعال:'),
+            reply_markup=products_keyboard(products, layout=uncat_layout),
+        )
         return
-    await message_or_callback.answer('🗂 دسته‌بندی محصولات را انتخاب کن:', reply_markup=product_categories_keyboard(categories, counts))
+    await message_or_callback.answer(
+        '🗂 دسته‌بندی محصولات را انتخاب کن:',
+        reply_markup=product_categories_keyboard(categories, counts, layout=cats_layout),
+    )
 
 
 @router.message(MenuTextFilter('products', '🛍 محصولات'))
@@ -48,7 +64,11 @@ async def catalog_categories(callback: CallbackQuery) -> None:
         service = ProductService(session)
         categories = await service.list_categories()
         counts = await service.category_counts(customer_visible=True)
-    await callback.message.edit_text('🗂 دسته‌بندی محصولات را انتخاب کن:', reply_markup=product_categories_keyboard(categories, counts))
+        cats_layout = await service.get_categories_layout()
+    await callback.message.edit_text(
+        '🗂 دسته‌بندی محصولات را انتخاب کن:',
+        reply_markup=product_categories_keyboard(categories, counts, layout=cats_layout),
+    )
 
 
 @router.callback_query(F.data.startswith('catalog:cat:'))
@@ -59,12 +79,23 @@ async def category_products(callback: CallbackQuery) -> None:
         texts = await SettingsService(session).get('texts')
         service = ProductService(session)
         products = await service.list_active(category_id=category_id)
-        category = await service.get_category(category_id) if category_id != 'uncategorized' else {'title': 'بدون دسته'}
+        if category_id == 'uncategorized':
+            category = {'title': 'بدون دسته'}
+            layout = await service.get_uncategorized_layout()
+        else:
+            category = await service.get_category(category_id)
+            layout = category_layout(category)
     title = category.get('title') if category else 'محصولات'
     if not products:
-        await callback.message.edit_text(f'در دسته‌بندی «{title}» محصول فعالی وجود ندارد.', reply_markup=products_keyboard([]))
+        await callback.message.edit_text(
+            f'در دسته‌بندی «{title}» محصول فعالی وجود ندارد.',
+            reply_markup=products_keyboard([], layout=layout),
+        )
         return
-    await callback.message.edit_text(f'{texts.get("products_title", "محصولات فعال:")}\nدسته‌بندی: {title}', reply_markup=products_keyboard(products))
+    await callback.message.edit_text(
+        f'{texts.get("products_title", "محصولات فعال:")}\nدسته‌بندی: {title}',
+        reply_markup=products_keyboard(products, layout=layout),
+    )
 
 
 @router.callback_query(F.data.in_({'back:products', 'catalog:back'}))
@@ -74,7 +105,11 @@ async def back_products(callback: CallbackQuery) -> None:
         service = ProductService(session)
         categories = await service.list_categories()
         counts = await service.category_counts(customer_visible=True)
-    await callback.message.edit_text('🗂 دسته‌بندی محصولات را انتخاب کن:', reply_markup=product_categories_keyboard(categories, counts))
+        cats_layout = await service.get_categories_layout()
+    await callback.message.edit_text(
+        '🗂 دسته‌بندی محصولات را انتخاب کن:',
+        reply_markup=product_categories_keyboard(categories, counts, layout=cats_layout),
+    )
 
 
 @router.callback_query(F.data.startswith('product:'))

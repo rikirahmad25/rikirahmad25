@@ -180,9 +180,25 @@ def product_categories_keyboard(categories: list[dict], counts: dict[str, int] |
     return builder.as_markup()
 
 
-def product_categories_manage_keyboard(categories: list[dict]) -> InlineKeyboardMarkup:
+def _layout_label(layout: str | None) -> str:
+    return 'دو ستونه' if str(layout or '').strip().lower() == 'double' else 'تک ستونه'
+
+
+def product_categories_manage_keyboard(
+    categories: list[dict],
+    categories_layout: str | None = None,
+    uncategorized_layout: str | None = None,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text='➕ ساخت دسته‌بندی', callback_data='admin:product:category:add')
+    builder.button(
+        text=f'🧱 نمایش لیست دسته‌بندی‌ها: {_layout_label(categories_layout)}',
+        callback_data='admin:product:categories_layout',
+    )
+    builder.button(
+        text=f'📦 نمایش محصولات «بدون دسته»: {_layout_label(uncategorized_layout)}',
+        callback_data='admin:product:category:uncategorized_layout',
+    )
     for cat in categories:
         prefix = '✅' if cat.get('is_active', True) else '❌'
         builder.button(text=f'{prefix} {cat.get("title")}', callback_data=f'admin:product:category:manage:{cat.get("id")}')
@@ -191,12 +207,32 @@ def product_categories_manage_keyboard(categories: list[dict]) -> InlineKeyboard
     return builder.as_markup()
 
 
-def product_category_manage_keyboard(cat_id: str, is_active: bool = True) -> InlineKeyboardMarkup:
+def product_category_manage_keyboard(
+    cat_id: str,
+    is_active: bool = True,
+    layout: str | None = None,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text='✅ فعال/غیرفعال', callback_data=f'admin:product:category:toggle:{cat_id}')
     builder.button(text='✏️ تغییر عنوان', callback_data=f'admin:product:category:rename:{cat_id}')
+    builder.button(
+        text=f'🧱 نمایش محصولات این دسته: {_layout_label(layout)}',
+        callback_data=f'admin:product:category:layout:{cat_id}',
+    )
     builder.button(text='🗑 حذف از لیست', callback_data=f'admin:product:category:delete:{cat_id}')
     builder.button(text='⬅️ دسته‌بندی‌ها', callback_data='admin:product:categories')
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def layout_choice_keyboard(callback_prefix: str, current: str | None = None) -> InlineKeyboardMarkup:
+    """Keyboard for picking single/double layout. Buttons emit
+    ``{callback_prefix}:single`` or ``{callback_prefix}:double``."""
+    current_norm = str(current or '').strip().lower()
+    builder = InlineKeyboardBuilder()
+    for value, title in [('single', 'تک ستونه'), ('double', 'دو ستونه')]:
+        mark = '✅ ' if current_norm == value else ''
+        builder.button(text=f'{mark}{title}', callback_data=f'{callback_prefix}:{value}')
     builder.adjust(1)
     return builder.as_markup()
 
